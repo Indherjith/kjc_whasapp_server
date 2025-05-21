@@ -1,31 +1,48 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const express = require('express');
+const bodyParser = require('body-parser');
+const qrcode = require('qrcode-terminal');
+
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+// Middleware
+app.use(bodyParser.json());
 
-// Setup WhatsApp client
+// WhatsApp client setup
 const client = new Client({
-  authStrategy: new LocalAuth(), // saves session
+  authStrategy: new LocalAuth({
+    dataPath: '/opt/render/project/src/session' // Make sure this matches the Render disk mount path
+  }),
   puppeteer: {
-    args: ['--no-sandbox'],
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   }
 });
 
+// QR Code handling
 client.on('qr', (qr) => {
-  console.log('QR RECEIVED', qr);
+  console.log('🔒 Scan the QR Code below to authenticate:');
   qrcode.generate(qr, { small: true });
 });
 
+// Ready event
 client.on('ready', () => {
-  console.log('WhatsApp client is ready!');
+  console.log('✅ WhatsApp client is ready!');
 });
 
+// Error event
+client.on('auth_failure', (msg) => {
+  console.error('❌ Authentication failed:', msg);
+});
+
+client.on('disconnected', (reason) => {
+  console.log('⚠️ Client disconnected:', reason);
+});
+
+// Initialize WhatsApp client
 client.initialize();
 
-// API to send message
+// API route to send a message
 app.post('/send-message', async (req, res) => {
   const { number, message } = req.body;
 
@@ -33,21 +50,25 @@ app.post('/send-message', async (req, res) => {
     return res.status(400).json({ error: 'Missing number or message' });
   }
 
-  try {
-    const formattedNumber = number.includes('@c.us') ? number : `${number}@c.us`;
+  // Format number (e.g., 918072454199 → 918072454199@c.us)
+  const chatId = number.includes('@c.us') ? number : `${number}@c.us`;
 
-    await client.sendMessage(formattedNumber, message);
+  try {
+    await client.sendMessage(chatId, message);
+    console.log(`📤 Message sent to ${number}: ${message}`);
     return res.status(200).json({ success: true, message: 'Message sent' });
-  } catch (error) {
-    console.error('Error sending message:', error);
-    return res.status(500).json({ error: 'Failed to send message' });
+  } catch (err) {
+    console.error('❌ Error sending message:', err);
+    return res.status(500).json({ error: 'Failed to send message', details: err.message });
   }
 });
 
+// Root test route
 app.get('/', (req, res) => {
-  res.send('WhatsApp Web API is running');
+  res.send('📡 WhatsApp Message Sender API is running!');
 });
 
-app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+// Start Express server
+app.listen(PORT, () => {
+  console.log(`🚀 Server is running on port ${PORT}`);
 });
