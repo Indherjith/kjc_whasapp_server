@@ -12,12 +12,28 @@ app.use(bodyParser.json());
 // WhatsApp client setup
 const client = new Client({
   authStrategy: new LocalAuth({
-    dataPath: '/opt/render/project/src/session' // Make sure this matches the Render disk mount path
+    dataPath: '/opt/render/project/src/session' // Render disk mount path
   }),
   puppeteer: {
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  }
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--single-process',
+      '--no-zygote',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding'
+    ],
+  },
 });
+
+// Memory usage logging (optional, for debugging)
+setInterval(() => {
+  const mem = process.memoryUsage();
+  console.log(`Memory usage - RSS: ${(mem.rss / 1024 / 1024).toFixed(2)} MB`);
+}, 60000);
 
 // QR Code handling
 client.on('qr', (qr) => {
@@ -50,7 +66,6 @@ app.post('/send-message', async (req, res) => {
     return res.status(400).json({ error: 'Missing number or message' });
   }
 
-  // Format number (e.g., 918072454199 → 918072454199@c.us)
   const chatId = number.includes('@c.us') ? number : `${number}@c.us`;
 
   try {
